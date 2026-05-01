@@ -217,3 +217,9 @@ __marimo__/
 
 # Cache
 **/data_cache/
+
+# Generated agent reports (per-run analysis output, not source)
+reports/
+
+# Claude Code worktrees / scratch
+.claude/
