@@ -257,17 +257,33 @@ def get_fundamentals(
         if not info:
             return f"No fundamentals data found for symbol '{ticker}'"
 
+        # Gate forward-looking estimates on analyst coverage.
+        # Yahoo's API can return stale/phantom values in `forwardPE` / `forwardEps`
+        # even when the underlying analyst consensus is empty (the website's
+        # Key Statistics page hides them as N/A in that case). We mirror that
+        # UI-side gating so downstream agents don't build theses on ghost data.
+        coverage_signals = [
+            info.get("numberOfAnalystOpinions"),
+            info.get("targetMeanPrice"),
+            info.get("epsCurrentYear"),
+            info.get("epsNextYear"),
+            info.get("epsNextQuarter"),
+        ]
+        has_analyst_coverage = any(s for s in coverage_signals)
+        forward_pe = info.get("forwardPE") if has_analyst_coverage else None
+        forward_eps = info.get("forwardEps") if has_analyst_coverage else None
+
         fields = [
             ("Name", info.get("longName")),
             ("Sector", info.get("sector")),
             ("Industry", info.get("industry")),
             ("Market Cap", info.get("marketCap")),
             ("PE Ratio (TTM)", info.get("trailingPE")),
-            ("Forward PE", info.get("forwardPE")),
+            ("Forward PE", forward_pe),
             ("PEG Ratio", info.get("pegRatio")),
             ("Price to Book", info.get("priceToBook")),
             ("EPS (TTM)", info.get("trailingEps")),
-            ("Forward EPS", info.get("forwardEps")),
+            ("Forward EPS", forward_eps),
             ("Dividend Yield", info.get("dividendYield")),
             ("Beta", info.get("beta")),
             ("52 Week High", info.get("fiftyTwoWeekHigh")),
@@ -292,6 +308,20 @@ def get_fundamentals(
         for label, value in fields:
             if value is not None:
                 lines.append(f"{label}: {value}")
+
+        if not has_analyst_coverage:
+            lines.append(
+                "Forward PE: N/A (no analyst coverage)"
+            )
+            lines.append(
+                "Forward EPS: N/A (no analyst coverage)"
+            )
+            lines.append(
+                "# Note: Yahoo Finance reports no analyst opinions, price targets, "
+                "or per-period EPS estimates for this ticker. Any forward EPS / "
+                "forward P/E that may appear in the raw API is a stale single-source "
+                "value and is suppressed here, matching Yahoo's own Key Statistics UI."
+            )
 
         header = f"# Company Fundamentals for {ticker.upper()}\n"
         header += f"# Data retrieved on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
